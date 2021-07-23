@@ -27,6 +27,7 @@ module Benchmark
   #
   # Besides regular Calculating report, this will also indicates which one is slower.
   module Compare
+    @@table_output = []
 
     # Compare between reports, prints out facts of each report:
     # runtime, comparative speed difference.
@@ -34,23 +35,36 @@ module Benchmark
     def compare(*entries)
       return if entries.size < 2
 
-      sorted = entries.sort_by{ |e| e.stats.central_tendency }.reverse
-
-      best = sorted.shift
+      if @@compare_relative
+        sorted = entries.sort_by{ |e| e.label }
+        compare_relative =
+          sorted.select { |e| e.label.include? @@compare_relative }.first
+        sorted.delete(compare_relative)
+      else
+        sorted = entries.sort_by{ |e| e.stats.central_tendency }.reverse
+        compare_relative = sorted.shift
+      end
 
       $stdout.puts "\nComparison:"
 
-      $stdout.printf "%20s: %10.1f i/s\n", best.label.to_s, best.stats.central_tendency
+      $stdout.printf "%20s: %10.1f i/s\n", compare_relative.label.to_s, compare_relative.stats.central_tendency
 
+      if @@table_output.empty?
+        headers = "|Method arguments|" +
+          sorted.map { _1.label.split(": ")[0] }.join("|") + "|"
+        @@table_output << headers
+      end
+
+      output = []
       sorted.each do |report|
         name = report.label.to_s
 
         $stdout.printf "%20s: %10.1f i/s - ", name, report.stats.central_tendency
 
-        if report.stats.overlaps?(best.stats)
+        if report.stats.overlaps?(compare_relative.stats)
           $stdout.print "same-ish: difference falls within error"
         else
-          slowdown, error = report.stats.slowdown(best.stats)
+          slowdown, error = report.stats.slowdown(compare_relative.stats)
           $stdout.printf "%.2fx ", slowdown
           if error
             $stdout.printf " (± %.2f)", error
@@ -59,12 +73,25 @@ module Benchmark
         end
 
         $stdout.puts
+
+        slowdown, error = report.stats.slowdown(compare_relative.stats)
+        output <<  "%.2fx" % slowdown
       end
 
-      footer = best.stats.footer
+      @@table_output << "|`#{compare_relative.label.split(': ')[1]}`|#{output.join('|')}|"
+
+      footer = compare_relative.stats.footer
       $stdout.puts footer.rjust(40) if footer
 
       $stdout.puts
+    end
+
+    def print_table
+      $stdout.puts @@table_output.join("\n")
+    end
+
+    def compare_relative_to(label)
+      @@compare_relative = label
     end
   end
 
